@@ -26,6 +26,7 @@
 .qty-btn{width:26px;height:26px;border-radius:50%;border:1px solid #c7a765;background:#fff;cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--brown)}
 .cart-footer{padding:16px 20px;border-top:1px solid #dfcc9e;display:flex;flex-direction:column;gap:10px}
 .cart-total-row{display:flex;justify-content:space-between;font-size:15px;color:var(--brown);font-weight:700}
+.cart-sub-row{font-size:12.5px;font-weight:400;color:#8a6b53;margin-bottom:-2px}
 .cart-footer input,.cart-footer textarea{font-family:inherit;border:1px solid #d5bd8b;border-radius:10px;padding:9px 12px;font-size:13px;background:#fffaf1;outline:none;resize:none}
 .cart-footer textarea{min-height:52px}
 .cart-submit{background:var(--brown);color:#fff;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
@@ -206,7 +207,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ---------- Takeaway order cart ----------
-  var WHATSAPP_NUMBER = '989301054858';
+  var SMS_NUMBER = '09301054858';
+  var FOOD_SECTIONS = ['breakfast', 'dessert'];
+  var PACKAGING_FEE = { food: 30000, drink: 20000 };
   var persianDigitsArr = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
 
   function toPersianDigits(num) {
@@ -226,6 +229,12 @@ document.addEventListener('DOMContentLoaded', function () {
     return parseInt(normalized, 10);
   }
 
+  function getPackagingType(itemEl) {
+    var section = itemEl.closest('.menu-section');
+    var sectionName = section ? section.dataset.section : '';
+    return FOOD_SECTIONS.indexOf(sectionName) !== -1 ? 'food' : 'drink';
+  }
+
   var cart = {};
 
   function updateCartBadge() {
@@ -238,19 +247,27 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  function computeTotals() {
+    var itemsTotal = 0;
+    var packagingTotal = 0;
+    Object.keys(cart).forEach(function (id) {
+      var item = cart[id];
+      itemsTotal += item.price * item.qty;
+      packagingTotal += PACKAGING_FEE[item.packType] * item.qty;
+    });
+    return { itemsTotal: itemsTotal, packagingTotal: packagingTotal, grandTotal: itemsTotal + packagingTotal };
+  }
+
   function renderCartItems() {
     var container = document.getElementById('cart-items');
     if (!container) return;
     var ids = Object.keys(cart);
-    var total = 0;
     if (ids.length === 0) {
       container.innerHTML = '<p class="cart-empty">سبد سفارش خالیه</p>';
     } else {
       var html = '';
       ids.forEach(function (id) {
         var item = cart[id];
-        var lineTotal = item.price * item.qty;
-        total += lineTotal;
         html += '' +
           '<div class="cart-row">' +
             '<div class="cart-row-info"><b>' + item.name + '</b><span>' + toPersianPrice(item.price) + ' تومان</span></div>' +
@@ -263,12 +280,15 @@ document.addEventListener('DOMContentLoaded', function () {
       });
       container.innerHTML = html;
     }
+    var totals = computeTotals();
+    var packagingEl = document.getElementById('cart-packaging');
     var totalEl = document.getElementById('cart-total');
-    if (totalEl) totalEl.textContent = toPersianPrice(total) + ' تومان';
+    if (packagingEl) packagingEl.textContent = toPersianPrice(totals.packagingTotal) + ' تومان';
+    if (totalEl) totalEl.textContent = toPersianPrice(totals.grandTotal) + ' تومان';
   }
 
-  function addToCart(id, name, price) {
-    if (!cart[id]) cart[id] = { name: name, price: price, qty: 0 };
+  function addToCart(id, name, price, packType) {
+    if (!cart[id]) cart[id] = { name: name, price: price, packType: packType, qty: 0 };
     cart[id].qty += 1;
     updateCartBadge();
     renderCartItems();
@@ -289,6 +309,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!priceEl || !nameEl) return;
     var price = parsePrice(priceEl.textContent);
     if (price === null) return; // unavailable item ("—") — no ordering
+    var packType = getPackagingType(item);
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'add-cart-btn';
@@ -296,7 +317,7 @@ document.addEventListener('DOMContentLoaded', function () {
     btn.textContent = '+';
     var id = 'item-' + idx;
     btn.addEventListener('click', function () {
-      addToCart(id, nameEl.textContent, price);
+      addToCart(id, nameEl.textContent, price, packType);
       btn.classList.add('bump');
       setTimeout(function () { btn.classList.remove('bump'); }, 180);
     });
@@ -313,11 +334,12 @@ document.addEventListener('DOMContentLoaded', function () {
       '<div class="cart-panel-header"><h3>سبد سفارش بیرون‌بر</h3><button id="cart-close" type="button" class="cart-close">✕</button></div>' +
       '<div id="cart-items" class="cart-items"><p class="cart-empty">سبد سفارش خالیه</p></div>' +
       '<div class="cart-footer">' +
+        '<div class="cart-total-row cart-sub-row"><span>هزینه بسته‌بندی:</span><span id="cart-packaging">۰ تومان</span></div>' +
         '<div class="cart-total-row"><span>جمع کل:</span><b id="cart-total">۰ تومان</b></div>' +
         '<input id="cart-name" type="text" placeholder="اسم شما">' +
         '<input id="cart-phone" type="tel" placeholder="شماره تماس">' +
         '<textarea id="cart-address" placeholder="آدرس یا توضیحات سفارش"></textarea>' +
-        '<button id="cart-submit" type="button" class="cart-submit">ثبت سفارش در واتساپ</button>' +
+        '<button id="cart-submit" type="button" class="cart-submit">ثبت سفارش با پیامک</button>' +
       '</div>' +
     '</div>';
   document.body.insertAdjacentHTML('beforeend', panelHTML);
@@ -354,24 +376,26 @@ document.addEventListener('DOMContentLoaded', function () {
     var phone = document.getElementById('cart-phone').value.trim();
     var address = document.getElementById('cart-address').value.trim();
 
+    var totals = computeTotals();
     var lines = ['سفارش جدید از منوی دیجیتال AHORA:', ''];
-    var total = 0;
     ids.forEach(function (id) {
       var item = cart[id];
       var lineTotal = item.price * item.qty;
-      total += lineTotal;
       lines.push('- ' + item.name + ' × ' + item.qty + ' = ' + toPersianPrice(lineTotal) + ' تومان');
     });
     lines.push('');
-    lines.push('جمع کل: ' + toPersianPrice(total) + ' تومان');
+    lines.push('هزینه بسته‌بندی: ' + toPersianPrice(totals.packagingTotal) + ' تومان');
+    lines.push('جمع کل: ' + toPersianPrice(totals.grandTotal) + ' تومان');
     lines.push('');
     lines.push('نام: ' + name);
     if (phone) lines.push('شماره تماس: ' + phone);
     if (address) lines.push('آدرس/توضیحات: ' + address);
 
     var message = lines.join('\n');
-    var url = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(message);
-    window.open(url, '_blank');
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    var separator = isIOS ? '&' : '?';
+    var url = 'sms:' + SMS_NUMBER + separator + 'body=' + encodeURIComponent(message);
+    window.location.href = url;
   });
 });
 
