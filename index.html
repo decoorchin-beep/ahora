@@ -207,7 +207,8 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ---------- Takeaway order cart ----------
-  var SMS_NUMBER = '09301054858';
+  // آدرس وب‌اپ گوگل اپس اسکریپت که سفارش‌ها رو به گوگل شیت می‌فرسته (راهنمای ساختش رو جدا گرفتی)
+  var SHEET_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxDpYkhQTNlLRije_lmEPrir3i22GJ6p0ADvWkeIb5xF1gvTiDt86cIgSMAK79lzKZ8/exec';
   var FOOD_SECTIONS = ['breakfast', 'dessert'];
   var PACKAGING_FEE = { food: 30000, drink: 20000 };
   var persianDigitsArr = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
@@ -339,7 +340,8 @@ document.addEventListener('DOMContentLoaded', function () {
         '<input id="cart-name" type="text" placeholder="اسم شما">' +
         '<input id="cart-phone" type="tel" placeholder="شماره تماس">' +
         '<textarea id="cart-address" placeholder="آدرس یا توضیحات سفارش"></textarea>' +
-        '<button id="cart-submit" type="button" class="cart-submit">ثبت سفارش با پیامک</button>' +
+        '<button id="cart-submit" type="button" class="cart-submit">ثبت سفارش</button>' +
+        '<p id="cart-status" style="margin:0;font-size:12px;text-align:center;color:#8a6b53;display:none"></p>' +
       '</div>' +
     '</div>';
   document.body.insertAdjacentHTML('beforeend', panelHTML);
@@ -364,6 +366,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.getElementById('cart-submit').addEventListener('click', function () {
     var ids = Object.keys(cart);
+    var statusEl = document.getElementById('cart-status');
+    var submitBtn = document.getElementById('cart-submit');
+
+    function showStatus(text, color) {
+      statusEl.textContent = text;
+      statusEl.style.color = color || '#8a6b53';
+      statusEl.style.display = 'block';
+    }
+
     if (ids.length === 0) {
       alert('سبد سفارش خالیه، اول یه چیزی اضافه کن.');
       return;
@@ -377,25 +388,54 @@ document.addEventListener('DOMContentLoaded', function () {
     var address = document.getElementById('cart-address').value.trim();
 
     var totals = computeTotals();
-    var lines = ['سفارش جدید از منوی دیجیتال AHORA:', ''];
-    ids.forEach(function (id) {
+    var itemsText = ids.map(function (id) {
       var item = cart[id];
       var lineTotal = item.price * item.qty;
-      lines.push('- ' + item.name + ' × ' + item.qty + ' = ' + toPersianPrice(lineTotal) + ' تومان');
-    });
-    lines.push('');
-    lines.push('هزینه بسته‌بندی: ' + toPersianPrice(totals.packagingTotal) + ' تومان');
-    lines.push('جمع کل: ' + toPersianPrice(totals.grandTotal) + ' تومان');
-    lines.push('');
-    lines.push('نام: ' + name);
-    if (phone) lines.push('شماره تماس: ' + phone);
-    if (address) lines.push('آدرس/توضیحات: ' + address);
+      return item.name + ' × ' + item.qty + ' = ' + toPersianPrice(lineTotal) + ' تومان';
+    }).join(' | ');
 
-    var message = lines.join('\n');
-    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    var separator = isIOS ? '&' : '?';
-    var url = 'sms:' + SMS_NUMBER + separator + 'body=' + encodeURIComponent(message);
-    window.location.href = url;
+    var payload = {
+      name: name,
+      phone: phone,
+      address: address,
+      items: itemsText,
+      packaging: totals.packagingTotal,
+      total: totals.grandTotal,
+      dateTime: new Date().toLocaleString('fa-IR')
+    };
+
+    if (!SHEET_WEBAPP_URL || SHEET_WEBAPP_URL.indexOf('PASTE_YOUR') === 0) {
+      showStatus('آدرس اتصال به گوگل شیت هنوز تنظیم نشده.', '#c0392b');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'در حال ارسال...';
+    showStatus('در حال ثبت سفارش...', '#8a6b53');
+
+    fetch(SHEET_WEBAPP_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    })
+      .then(function () {
+        showStatus('سفارش شما با موفقیت ثبت شد ✅', '#2e7d32');
+        Object.keys(cart).forEach(function (k) { delete cart[k]; });
+        updateCartBadge();
+        renderCartItems();
+        document.getElementById('cart-name').value = '';
+        document.getElementById('cart-phone').value = '';
+        document.getElementById('cart-address').value = '';
+        setTimeout(closeCart, 1800);
+      })
+      .catch(function () {
+        showStatus('ارسال سفارش با خطا مواجه شد، دوباره تلاش کن.', '#c0392b');
+      })
+      .finally(function () {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'ثبت سفارش';
+      });
   });
 });
 
